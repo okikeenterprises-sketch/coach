@@ -89,12 +89,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:description", content: "Your Daily Companion is a personal task management app with an interactive assistant." },
       { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/DEXzDTbRJ9YvzIyPwdwx0uF0uev1/social-images/social-1781010300386-logo_(4).webp" },
       { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/DEXzDTbRJ9YvzIyPwdwx0uF0uev1/social-images/social-1781010300386-logo_(4).webp" },
+      { name: "theme-color", content: "#0F172A" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
     ],
   }),
   shellComponent: RootShell,
