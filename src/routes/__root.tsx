@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "OKIKES'S COACH" },
+      { name: "description", content: "Your Daily Companion is a personal task management app with an interactive assistant." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "OKIKES'S COACH" },
+      { property: "og:description", content: "Your Daily Companion is a personal task management app with an interactive assistant." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "OKIKES'S COACH" },
+      { name: "twitter:description", content: "Your Daily Companion is a personal task management app with an interactive assistant." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/DEXzDTbRJ9YvzIyPwdwx0uF0uev1/social-images/social-1781010300386-logo_(4).webp" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/DEXzDTbRJ9YvzIyPwdwx0uF0uev1/social-images/social-1781010300386-logo_(4).webp" },
     ],
     links: [
       {
