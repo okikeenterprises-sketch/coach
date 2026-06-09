@@ -108,19 +108,28 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                     }
                     if (typeof part.type === "string" && part.type.startsWith("tool-")) {
                       const tp = part as {
-                        type: string;
-                        state?: string;
+                        type: `tool-${string}`;
+                        state?: "input-streaming" | "input-available" | "output-available" | "output-error";
                         input?: unknown;
                         output?: unknown;
                         errorText?: string;
                       };
                       return (
                         <Tool key={i} defaultOpen={false}>
-                          <ToolHeader type={tp.type as `tool-${string}`} state={(tp.state ?? "output-available") as Parameters<typeof ToolHeader>[0]["state"]} />
+                          <ToolHeader type={tp.type} state={tp.state ?? "output-available"} />
                           <ToolContent>
                             {tp.input != null && <ToolInput input={tp.input} />}
                             {(tp.output != null || tp.errorText) && (
-                              <ToolOutput output={tp.output ? <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(tp.output, null, 2)}</pre> : null} errorText={tp.errorText} />
+                              <ToolOutput
+                                output={
+                                  tp.output != null ? (
+                                    <pre className="text-xs whitespace-pre-wrap">
+                                      {JSON.stringify(tp.output, null, 2)}
+                                    </pre>
+                                  ) : null
+                                }
+                                errorText={tp.errorText}
+                              />
                             )}
                           </ToolContent>
                         </Tool>
