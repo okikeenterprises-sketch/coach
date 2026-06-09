@@ -47,7 +47,15 @@ export const updateTask = createServerFn({ method: "POST" })
     }).parse(d),
   )
   .handler(async ({ context, data }) => {
-    const patch: Record<string, unknown> = { ...data.patch };
+    const patch: {
+      title?: string;
+      notes?: string | null;
+      due_at?: string | null;
+      priority?: "low" | "medium" | "high";
+      recurrence?: "none" | "daily" | "weekly";
+      status?: "todo" | "done";
+      completed_at?: string | null;
+    } = { ...data.patch };
     if (patch.status === "done") patch.completed_at = new Date().toISOString();
     if (patch.status === "todo") patch.completed_at = null;
     const { data: row, error } = await context.supabase
