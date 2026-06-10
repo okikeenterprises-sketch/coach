@@ -7,10 +7,8 @@ export const Route = createFileRoute("/api/stt")({
         const key = process.env.ELEVENLABS_API_KEY;
         if (!key) return new Response("STT not configured", { status: 500 });
         const form = await request.formData();
-        const file = form.get("audio");
-        if (!(file instanceof File) && !(file instanceof Blob)) {
-          return new Response("Missing audio", { status: 400 });
-        }
+        const file = form.get("audio") as Blob | null;
+        if (!file) return new Response("Missing audio", { status: 400 });
         const out = new FormData();
         out.append("file", file, "audio.webm");
         out.append("model_id", "scribe_v2");
