@@ -189,8 +189,8 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
           {messages.length === 0 ? (
             <ConversationEmptyState
               icon={<img src={coachLogo} alt="" width={64} height={64} className="h-16 w-16" />}
-              title="Hey, I'm Coach"
-              description="Ask me what's on your plate, add tasks, or get a kick-in-the-pants briefing."
+              title="Hi, I'm Alice"
+              description="Talk or type. I can manage tasks, search the web, check your calendar, and send emails."
             />
           ) : (
             messages.map((m) => (
