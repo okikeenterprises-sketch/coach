@@ -91,16 +91,16 @@ export const Route = createFileRoute("/api/chat")({
 
         const slacking = overdue.length >= 3 || neglected.length >= 3;
 
-        const system = `You are "Coach", a personal task assistant. Personality: ${
+        const system = `You are Alice, the user's bright, professional personal assistant with a warm, supportive voice. Speak in the first person, keep replies conversational and concise (most under 3 sentences) since they will be spoken aloud. Avoid bullet lists unless explicitly asked. ${
           slacking
-            ? "the user has been slacking — be firm, direct, and slightly stern. Call out neglected and overdue tasks specifically. No fluff. Push them to commit to action."
-            : "the user is on top of things — be cheerful, warm, and encouraging. Light humor is welcome. Celebrate progress."
+            ? "The user has been slacking — be gently firm and specific about what's overdue."
+            : "The user is on track — be encouraging."
         }
 
 Today is ${now.toISOString()}.
-Open tasks: ${openTasks?.length ?? 0} total. Overdue: ${overdue.length}. Due today: ${dueToday.length}. Neglected (>3 days, no due date): ${neglected.length}.
+Open tasks: ${openTasks?.length ?? 0} total. Overdue: ${overdue.length}. Due today: ${dueToday.length}. Neglected: ${neglected.length}.
 
-You have tools to read and modify the user's tasks. Use them whenever the user asks about, creates, completes, or changes tasks. Always confirm actions you took. When listing tasks in chat, use compact markdown bullets.`;
+You have tools for tasks, web search, calendar, and email. Use them whenever the user asks. Always confirm actions briefly after doing them. When reading aloud, spell out times naturally (e.g. "three thirty PM"). Never paste raw URLs or JSON.`;
 
         const provider = createLovableAiGatewayProvider(LOVABLE_API_KEY);
 
@@ -198,6 +198,157 @@ You have tools to read and modify the user's tasks. Use them whenever the user a
                 dueToday,
                 neglected,
               }),
+            }),
+            web_search: tool({
+              description: "Search the web for current information, news, facts. Returns top results with snippets.",
+              inputSchema: z.object({
+                query: z.string().min(1).max(300),
+                limit: z.number().int().min(1).max(8).default(5),
+              }),
+              execute: async ({ query, limit }) => {
+                const key = process.env.FIRECRAWL_API_KEY;
+                if (!key) return { error: "Web search not configured" };
+                try {
+                  const res = await fetch("https://api.firecrawl.dev/v2/search", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+                    body: JSON.stringify({ query, limit }),
+                  });
+                  if (!res.ok) return { error: `Search failed: ${res.status}` };
+                  const data = await res.json();
+                  const items = (data?.data?.web ?? data?.data ?? []) as Array<{ url?: string; title?: string; description?: string }>;
+                  return {
+                    results: items.slice(0, limit).map((r) => ({
+                      title: r.title,
+                      url: r.url,
+                      snippet: r.description,
+                    })),
+                  };
+                } catch (e) {
+                  return { error: e instanceof Error ? e.message : "Search error" };
+                }
+              },
+            }),
+            list_calendar_events: tool({
+              description: "List upcoming Google Calendar events from the user's primary calendar.",
+              inputSchema: z.object({
+                hoursAhead: z.number().int().min(1).max(720).default(72),
+                maxResults: z.number().int().min(1).max(20).default(10),
+              }),
+              execute: async ({ hoursAhead, maxResults }) => {
+                const lk = process.env.LOVABLE_API_KEY;
+                const ck = process.env.GOOGLE_CALENDAR_API_KEY;
+                if (!lk || !ck) return { error: "Calendar not configured" };
+                const timeMin = new Date().toISOString();
+                const timeMax = new Date(Date.now() + hoursAhead * 3600 * 1000).toISOString();
+                const url = `https://connector-gateway.lovable.dev/google_calendar/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=${maxResults}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
+                const res = await fetch(url, {
+                  headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": ck },
+                });
+                if (!res.ok) return { error: `Calendar error ${res.status}` };
+                const data = await res.json();
+                return {
+                  events: (data.items ?? []).map((e: { summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; location?: string }) => ({
+                    summary: e.summary,
+                    start: e.start?.dateTime ?? e.start?.date,
+                    end: e.end?.dateTime ?? e.end?.date,
+                    location: e.location,
+                  })),
+                };
+              },
+            }),
+            create_calendar_event: tool({
+              description: "Create a Google Calendar event on the user's primary calendar.",
+              inputSchema: z.object({
+                summary: z.string().min(1).max(300),
+                description: z.string().max(2000).optional(),
+                startISO: z.string().datetime(),
+                endISO: z.string().datetime(),
+                location: z.string().max(300).optional(),
+              }),
+              execute: async ({ summary, description, startISO, endISO, location }) => {
+                const lk = process.env.LOVABLE_API_KEY;
+                const ck = process.env.GOOGLE_CALENDAR_API_KEY;
+                if (!lk || !ck) return { error: "Calendar not configured" };
+                const res = await fetch(
+                  "https://connector-gateway.lovable.dev/google_calendar/calendar/v3/calendars/primary/events",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${lk}`,
+                      "X-Connection-Api-Key": ck,
+                    },
+                    body: JSON.stringify({
+                      summary,
+                      description,
+                      location,
+                      start: { dateTime: startISO },
+                      end: { dateTime: endISO },
+                    }),
+                  },
+                );
+                if (!res.ok) return { error: `Calendar error ${res.status}: ${await res.text()}` };
+                const data = await res.json();
+                return { ok: true, eventId: data.id, htmlLink: data.htmlLink };
+              },
+            }),
+            search_emails: tool({
+              description: "Search the user's Gmail inbox. Returns subjects and snippets.",
+              inputSchema: z.object({
+                query: z.string().max(200).default("is:unread").describe("Gmail search query"),
+                maxResults: z.number().int().min(1).max(15).default(5),
+              }),
+              execute: async ({ query, maxResults }) => {
+                const lk = process.env.LOVABLE_API_KEY;
+                const gk = process.env.GOOGLE_MAIL_API_KEY;
+                if (!lk || !gk) return { error: "Gmail not configured" };
+                const base = "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me";
+                const headers = { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": gk };
+                const list = await fetch(`${base}/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`, { headers });
+                if (!list.ok) return { error: `Gmail error ${list.status}` };
+                const { messages = [] } = await list.json();
+                const details = await Promise.all(
+                  (messages as { id: string }[]).slice(0, maxResults).map(async (m) => {
+                    const r = await fetch(`${base}/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, { headers });
+                    if (!r.ok) return null;
+                    const d = await r.json();
+                    const h = (d.payload?.headers ?? []) as { name: string; value: string }[];
+                    const get = (n: string) => h.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value;
+                    return { from: get("From"), subject: get("Subject"), date: get("Date"), snippet: d.snippet };
+                  }),
+                );
+                return { emails: details.filter(Boolean) };
+              },
+            }),
+            send_email: tool({
+              description: "Send an email from the user's Gmail account.",
+              inputSchema: z.object({
+                to: z.string().email(),
+                subject: z.string().min(1).max(300),
+                body: z.string().min(1).max(10000),
+              }),
+              execute: async ({ to, subject, body: emailBody }) => {
+                const lk = process.env.LOVABLE_API_KEY;
+                const gk = process.env.GOOGLE_MAIL_API_KEY;
+                if (!lk || !gk) return { error: "Gmail not configured" };
+                const rfc = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', "", emailBody].join("\r\n");
+                const raw = Buffer.from(rfc).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+                const res = await fetch(
+                  "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${lk}`,
+                      "X-Connection-Api-Key": gk,
+                    },
+                    body: JSON.stringify({ raw }),
+                  },
+                );
+                if (!res.ok) return { error: `Gmail send error ${res.status}: ${await res.text()}` };
+                return { ok: true };
+              },
             }),
           },
         });
