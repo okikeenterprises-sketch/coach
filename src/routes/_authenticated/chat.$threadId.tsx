@@ -93,7 +93,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const speak = async (text: string) => {
     try {
-      const res = await fetch("/api/tts", {
+      const res = await fetch("/api/public/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -156,7 +156,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
         try {
           const fd = new FormData();
           fd.append("audio", blob, "audio.webm");
-          const res = await fetch("/api/stt", { method: "POST", body: fd });
+          const res = await fetch("/api/public/stt", { method: "POST", body: fd });
           if (!res.ok) {
             toast.error("Couldn't transcribe");
             return;
