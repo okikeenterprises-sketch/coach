@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 const ALICE_VOICE_ID = "Xb7hH8MSUJpSbSDYk0k2";
 
-export const Route = createFileRoute("/api/tts")({
+export const Route = createFileRoute("/api/public/tts")({
   server: {
     handlers: {
       POST: async ({ request }) => {
