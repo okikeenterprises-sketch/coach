@@ -26,6 +26,25 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
 
+function pickAudioMime(): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/aac",
+  ];
+  return candidates.find((m) => MediaRecorder.isTypeSupported?.(m));
+}
+
+function filenameForMime(mime: string): string {
+  if (mime.includes("mp4")) return "audio.mp4";
+  if (mime.includes("aac")) return "audio.aac";
+  if (mime.includes("ogg")) return "audio.ogg";
+  return "audio.webm";
+}
+
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
   component: ChatThreadPage,
 });
