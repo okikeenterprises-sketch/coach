@@ -182,6 +182,173 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     setRecording(false);
   };
 
+  // ---- Call mode: continuous VAD-driven loop ----
+  const [callActive, setCallActive] = useState(false);
+  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const callRefs = useRef<{
+    stream?: MediaStream;
+    ctx?: AudioContext;
+    analyser?: AnalyserNode;
+    raf?: number;
+    recorder?: MediaRecorder;
+    chunks: Blob[];
+    speaking: boolean;
+    silenceStart: number;
+    speechStart: number;
+    stopped: boolean;
+  }>({ chunks: [], speaking: false, silenceStart: 0, speechStart: 0, stopped: false });
+
+  const transcribeAndSend = async (blob: Blob) => {
+    if (blob.size < 1200) return;
+    setCallState("thinking");
+    try {
+      const fd = new FormData();
+      fd.append("audio", blob, "audio.webm");
+      const res = await fetch("/api/public/stt", { method: "POST", body: fd });
+      if (!res.ok) {
+        setCallState("listening");
+        return;
+      }
+      const { text } = await res.json();
+      const t = (text ?? "").trim();
+      if (t) {
+        await sendMessage({ text: t });
+      } else {
+        setCallState("listening");
+      }
+    } catch {
+      setCallState("listening");
+    }
+  };
+
+  const stopCall = () => {
+    const r = callRefs.current;
+    r.stopped = true;
+    if (r.raf) cancelAnimationFrame(r.raf);
+    try {
+      r.recorder?.state !== "inactive" && r.recorder?.stop();
+    } catch {
+      /* noop */
+    }
+    r.stream?.getTracks().forEach((t) => t.stop());
+    void r.ctx?.close();
+    callRefs.current = { chunks: [], speaking: false, silenceStart: 0, speechStart: 0, stopped: false };
+    audioRef.current?.pause();
+    setCallActive(false);
+    setCallState("idle");
+  };
+
+  const startCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AC();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+
+      callRefs.current.stream = stream;
+      callRefs.current.ctx = ctx;
+      callRefs.current.analyser = analyser;
+      callRefs.current.stopped = false;
+      setCallActive(true);
+      setCallState("listening");
+
+      const SPEAK_THRESHOLD = 0.025; // RMS
+      const SILENCE_MS = 900;
+      const MIN_SPEECH_MS = 250;
+
+      const tick = () => {
+        const r = callRefs.current;
+        if (r.stopped) return;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        const now = performance.now();
+        const speakingNow = rms > SPEAK_THRESHOLD;
+
+        if (speakingNow) {
+          // Barge-in: interrupt TTS
+          if (audioRef.current && !audioRef.current.paused) {
+            audioRef.current.pause();
+          }
+          if (!r.speaking) {
+            r.speaking = true;
+            r.speechStart = now;
+            // start a fresh recorder per utterance
+            try {
+              const mr = new MediaRecorder(stream);
+              r.chunks = [];
+              mr.ondataavailable = (e) => {
+                if (e.data.size > 0) r.chunks.push(e.data);
+              };
+              mr.onstop = () => {
+                const blob = new Blob(r.chunks, { type: "audio/webm" });
+                r.chunks = [];
+                void transcribeAndSend(blob);
+              };
+              mr.start();
+              r.recorder = mr;
+              setCallState("listening");
+            } catch {
+              /* ignore */
+            }
+          }
+          r.silenceStart = 0;
+        } else if (r.speaking) {
+          if (!r.silenceStart) r.silenceStart = now;
+          if (now - r.silenceStart >= SILENCE_MS && now - r.speechStart >= MIN_SPEECH_MS) {
+            r.speaking = false;
+            r.silenceStart = 0;
+            try {
+              r.recorder?.state !== "inactive" && r.recorder?.stop();
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        r.raf = requestAnimationFrame(tick);
+      };
+      callRefs.current.raf = requestAnimationFrame(tick);
+    } catch {
+      toast.error("Microphone access denied");
+      setCallActive(false);
+    }
+  };
+
+  // Reflect TTS speaking state during a call
+  useEffect(() => {
+    if (!callActive) return;
+    const a = audioRef.current;
+    if (!a) return;
+    const onPlay = () => setCallState("speaking");
+    const onEnd = () => setCallState("listening");
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onEnd);
+    a.addEventListener("ended", onEnd);
+    return () => {
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onEnd);
+      a.removeEventListener("ended", onEnd);
+    };
+  }, [callActive, messages.length]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (callRefs.current.stream) stopCall();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
       <Conversation className="flex-1">
