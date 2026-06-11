@@ -24,7 +24,7 @@ import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/componen
 import coachLogo from "@/assets/coach-logo.png";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { Mic, Square, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
   component: ChatThreadPage,
