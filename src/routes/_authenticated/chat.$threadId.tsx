@@ -104,10 +104,17 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      const audio = new Audio(url);
+      const audio = audioRef.current && audioRef.current.dataset.primed === "1"
+        ? audioRef.current
+        : new Audio();
+      audio.src = url;
       audioRef.current = audio;
       audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
+      try {
+        await audio.play();
+      } catch {
+        /* autoplay blocked */
+      }
     } catch {
       /* ignore */
     }
@@ -143,19 +150,21 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
+      const mime = pickAudioMime();
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blobType = mr.mimeType || mime || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: blobType });
         if (blob.size < 500) return;
         setTranscribing(true);
         try {
           const fd = new FormData();
-          fd.append("audio", blob, "audio.webm");
+          fd.append("audio", blob, filenameForMime(blobType));
           const res = await fetch("/api/public/stt", { method: "POST", body: fd });
           if (!res.ok) {
             toast.error("Couldn't transcribe");
@@ -203,7 +212,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     setCallState("thinking");
     try {
       const fd = new FormData();
-      fd.append("audio", blob, "audio.webm");
+      fd.append("audio", blob, filenameForMime(blob.type));
       const res = await fetch("/api/public/stt", { method: "POST", body: fd });
       if (!res.ok) {
         setCallState("listening");
@@ -240,11 +249,24 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const startCall = async () => {
     try {
+      // Prime audio element so iOS PWA allows later programmatic playback.
+      try {
+        const primer = audioRef.current ?? new Audio();
+        primer.muted = true;
+        primer.dataset.primed = "1";
+        await primer.play().catch(() => undefined);
+        primer.pause();
+        primer.muted = false;
+        audioRef.current = primer;
+      } catch {
+        /* ignore */
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AC();
+      if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
@@ -285,13 +307,15 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
             r.speechStart = now;
             // start a fresh recorder per utterance
             try {
-              const mr = new MediaRecorder(stream);
+              const mime = pickAudioMime();
+              const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
               r.chunks = [];
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0) r.chunks.push(e.data);
               };
               mr.onstop = () => {
-                const blob = new Blob(r.chunks, { type: "audio/webm" });
+                const blobType = mr.mimeType || mime || "audio/webm";
+                const blob = new Blob(r.chunks, { type: blobType });
                 r.chunks = [];
                 void transcribeAndSend(blob);
               };
