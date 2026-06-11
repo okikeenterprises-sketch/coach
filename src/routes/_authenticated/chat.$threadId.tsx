@@ -455,6 +455,22 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                 {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
               </Button>
               {transcribing && <span className="text-xs text-muted-foreground">Transcribing…</span>}
+              <Button
+                type="button"
+                size="icon"
+                variant={callActive ? "destructive" : "ghost"}
+                onClick={callActive ? stopCall : startCall}
+                disabled={recording || transcribing}
+                aria-label={callActive ? "End call" : "Start call"}
+                title={callActive ? "End call" : "Start call with Alice"}
+              >
+                {callActive ? <PhoneOff className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+              </Button>
+              {callActive && (
+                <span className="text-xs text-muted-foreground">
+                  {callState === "speaking" ? "Alice is speaking…" : callState === "thinking" ? "Thinking…" : "Listening…"}
+                </span>
+              )}
             </div>
             <PromptInputSubmit status={status} disabled={isLoading} />
           </PromptInputFooter>
