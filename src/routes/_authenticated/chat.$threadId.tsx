@@ -20,7 +20,13 @@ import {
   PromptInputSubmit,
 } from "@/components/ai-elements/prompt-input";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
+import {
+  Tool,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from "@/components/ai-elements/tool";
 import coachLogo from "@/assets/coach-logo.png";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -82,7 +88,12 @@ function ChatWindow({ threadId }: { threadId: string }) {
   });
 
   const initial = useMemo<UIMessage[]>(
-    () => (msgsQ.data ?? []).map((m) => ({ id: m.id, role: m.role, parts: m.parts as UIMessage["parts"] })),
+    () =>
+      (msgsQ.data ?? []).map((m) => ({
+        id: m.id,
+        role: m.role,
+        parts: m.parts as UIMessage["parts"],
+      })),
     [msgsQ.data],
   );
 
