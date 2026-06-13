@@ -26,6 +26,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
 
+const SILENT_AUDIO_SRC =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==";
+
 function pickAudioMime(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
   const candidates = [
@@ -43,6 +46,23 @@ function filenameForMime(mime: string): string {
   if (mime.includes("aac")) return "audio.aac";
   if (mime.includes("ogg")) return "audio.ogg";
   return "audio.webm";
+}
+
+async function primeAudioElement(audio: HTMLAudioElement) {
+  audio.setAttribute("playsinline", "true");
+  audio.preload = "auto";
+  audio.muted = true;
+  audio.src = SILENT_AUDIO_SRC;
+  audio.load();
+  try {
+    await audio.play();
+    audio.dataset.primed = "1";
+  } catch {
+    delete audio.dataset.primed;
+  }
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = false;
 }
 
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
