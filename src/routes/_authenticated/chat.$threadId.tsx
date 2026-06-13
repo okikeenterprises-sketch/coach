@@ -187,7 +187,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
   const startRecording = async () => {
     try {
       if (!audioRef.current) audioRef.current = new Audio();
-      void primeAudioElement(audioRef.current);
+      await primeAudioElement(audioRef.current);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -199,7 +199,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blobType = mr.mimeType || mime || "audio/webm";
+          const blobType = mr.mimeType || chunksRef.current[0]?.type || mime || "audio/mp4";
         const blob = new Blob(chunksRef.current, { type: blobType });
         if (blob.size < 500) return;
         setTranscribing(true);
@@ -290,18 +290,8 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const startCall = async () => {
     try {
-      // Prime audio element so iOS PWA allows later programmatic playback.
-      try {
-        const primer = audioRef.current ?? new Audio();
-        primer.muted = true;
-        primer.dataset.primed = "1";
-        await primer.play().catch(() => undefined);
-        primer.pause();
-        primer.muted = false;
-        audioRef.current = primer;
-      } catch {
-        /* ignore */
-      }
+      if (!audioRef.current) audioRef.current = new Audio();
+      await primeAudioElement(audioRef.current);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
@@ -321,7 +311,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       setCallActive(true);
       setCallState("listening");
 
-      const SPEAK_THRESHOLD = 0.025; // RMS
+      const SPEAK_THRESHOLD = 0.018; // RMS
       const SILENCE_MS = 900;
       const MIN_SPEECH_MS = 250;
 
@@ -355,7 +345,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                 if (e.data.size > 0) r.chunks.push(e.data);
               };
               mr.onstop = () => {
-                const blobType = mr.mimeType || mime || "audio/webm";
+                const blobType = mr.mimeType || r.chunks[0]?.type || mime || "audio/mp4";
                 const blob = new Blob(r.chunks, { type: blobType });
                 r.chunks = [];
                 void transcribeAndSend(blob);
