@@ -424,7 +424,6 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     return () => {
       if (callRefs.current.stream) stopCall();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -453,7 +452,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                     if (typeof part.type === "string" && part.type.startsWith("tool-")) {
                       const tp = part as {
                         type: `tool-${string}`;
-                        state?: "input-streaming" | "input-available" | "output-available" | "output-error";
+                        state?:
+                          | "input-streaming"
+                          | "input-available"
+                          | "output-available"
+                          | "output-error";
                         input?: unknown;
                         output?: unknown;
                         errorText?: string;
@@ -547,7 +550,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
               </Button>
               {callActive && (
                 <span className="text-xs text-muted-foreground">
-                  {callState === "speaking" ? "Alice is speaking…" : callState === "thinking" ? "Thinking…" : "Listening…"}
+                  {callState === "speaking"
+                    ? "Alice is speaking…"
+                    : callState === "thinking"
+                      ? "Thinking…"
+                      : "Listening…"}
                 </span>
               )}
             </div>
