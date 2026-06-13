@@ -406,7 +406,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
-      <audio ref={audioRef} playsInline preload="auto" className="h-0 w-0 opacity-0" tabIndex={-1} />
+      <audio ref={audioRef} preload="auto" className="h-0 w-0 opacity-0" tabIndex={-1} />
       <Conversation className="flex-1">
         <ConversationContent>
           {messages.length === 0 ? (
