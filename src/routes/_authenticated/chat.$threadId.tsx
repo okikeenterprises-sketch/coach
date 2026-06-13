@@ -140,13 +140,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audio = audioRef.current && audioRef.current.dataset.primed === "1"
-        ? audioRef.current
-        : new Audio();
+      const audio = audioRef.current ?? new Audio();
+      audio.pause();
+      audio.setAttribute("playsinline", "true");
       audio.src = url;
+      audio.load();
       audioRef.current = audio;
       audio.onended = () => URL.revokeObjectURL(url);
       try {
@@ -188,7 +186,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!audioRef.current) audioRef.current = new Audio();
+      void primeAudioElement(audioRef.current);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       const mime = pickAudioMime();
       const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
@@ -358,7 +360,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                 r.chunks = [];
                 void transcribeAndSend(blob);
               };
-              mr.start();
+              mr.start(250);
               r.recorder = mr;
               setCallState("listening");
             } catch {
