@@ -199,7 +199,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-          const blobType = mr.mimeType || chunksRef.current[0]?.type || mime || "audio/mp4";
+        const blobType = mr.mimeType || chunksRef.current[0]?.type || mime || "audio/mp4";
         const blob = new Blob(chunksRef.current, { type: blobType });
         if (blob.size < 500) return;
         setTranscribing(true);
@@ -276,7 +276,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     r.stopped = true;
     if (r.raf) cancelAnimationFrame(r.raf);
     try {
-      r.recorder?.state !== "inactive" && r.recorder?.stop();
+      if (r.recorder?.state !== "inactive") r.recorder?.stop();
     } catch {
       /* noop */
     }
@@ -364,7 +364,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
             r.speaking = false;
             r.silenceStart = 0;
             try {
-              r.recorder?.state !== "inactive" && r.recorder?.stop();
+              if (r.recorder?.state !== "inactive") r.recorder?.stop();
             } catch {
               /* ignore */
             }
