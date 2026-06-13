@@ -245,9 +245,9 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   // ---- Call mode: continuous VAD-driven loop ----
   const [callActive, setCallActive] = useState(false);
-  const [callState, setCallState] = useState<
-    "idle" | "listening" | "thinking" | "speaking"
-  >("idle");
+  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">(
+    "idle",
+  );
   const callRefs = useRef<{
     stream?: MediaStream;
     ctx?: AudioContext;
