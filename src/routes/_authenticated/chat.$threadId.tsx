@@ -245,7 +245,9 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   // ---- Call mode: continuous VAD-driven loop ----
   const [callActive, setCallActive] = useState(false);
-  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [callState, setCallState] = useState<
+    "idle" | "listening" | "thinking" | "speaking"
+  >("idle");
   const callRefs = useRef<{
     stream?: MediaStream;
     ctx?: AudioContext;
@@ -293,7 +295,13 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     }
     r.stream?.getTracks().forEach((t) => t.stop());
     void r.ctx?.close();
-    callRefs.current = { chunks: [], speaking: false, silenceStart: 0, speechStart: 0, stopped: false };
+    callRefs.current = {
+      chunks: [],
+      speaking: false,
+      silenceStart: 0,
+      speechStart: 0,
+      stopped: false,
+    };
     audioRef.current?.pause();
     setCallActive(false);
     setCallState("idle");
@@ -306,7 +314,9 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AC =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AC();
       if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
       const src = ctx.createMediaStreamSource(stream);
@@ -350,7 +360,9 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
             // start a fresh recorder per utterance
             try {
               const mime = pickAudioMime();
-              const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+              const mr = mime
+                ? new MediaRecorder(stream, { mimeType: mime })
+                : new MediaRecorder(stream);
               r.chunks = [];
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0) r.chunks.push(e.data);
