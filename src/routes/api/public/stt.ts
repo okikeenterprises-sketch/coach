@@ -7,10 +7,11 @@ export const Route = createFileRoute("/api/public/stt")({
         const key = process.env.ELEVENLABS_API_KEY;
         if (!key) return new Response("STT not configured", { status: 500 });
         const form = await request.formData();
-        const file = form.get("audio") as Blob | null;
-        if (!file) return new Response("Missing audio", { status: 400 });
+        const file = form.get("audio");
+        if (!(file instanceof Blob)) return new Response("Missing audio", { status: 400 });
+        const filename = "name" in file && typeof file.name === "string" ? file.name : "audio.m4a";
         const out = new FormData();
-        out.append("file", file, "audio.webm");
+        out.append("file", file, filename);
         out.append("model_id", "scribe_v2");
         const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
           method: "POST",

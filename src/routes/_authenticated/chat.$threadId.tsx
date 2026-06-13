@@ -20,11 +20,20 @@ import {
   PromptInputSubmit,
 } from "@/components/ai-elements/prompt-input";
 import { Shimmer } from "@/components/ai-elements/shimmer";
-import { Tool, ToolHeader, ToolContent, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
+import {
+  Tool,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from "@/components/ai-elements/tool";
 import coachLogo from "@/assets/coach-logo.png";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
+
+const SILENT_AUDIO_SRC =
+  "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQQAAAAAAA==";
 
 function pickAudioMime(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
@@ -45,6 +54,23 @@ function filenameForMime(mime: string): string {
   return "audio.webm";
 }
 
+async function primeAudioElement(audio: HTMLAudioElement) {
+  audio.setAttribute("playsinline", "true");
+  audio.preload = "auto";
+  audio.muted = true;
+  audio.src = SILENT_AUDIO_SRC;
+  audio.load();
+  try {
+    await audio.play();
+    audio.dataset.primed = "1";
+  } catch {
+    delete audio.dataset.primed;
+  }
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = false;
+}
+
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
   component: ChatThreadPage,
 });
@@ -62,7 +88,12 @@ function ChatWindow({ threadId }: { threadId: string }) {
   });
 
   const initial = useMemo<UIMessage[]>(
-    () => (msgsQ.data ?? []).map((m) => ({ id: m.id, role: m.role, parts: m.parts as UIMessage["parts"] })),
+    () =>
+      (msgsQ.data ?? []).map((m) => ({
+        id: m.id,
+        role: m.role,
+        parts: m.parts as UIMessage["parts"],
+      })),
     [msgsQ.data],
   );
 
@@ -120,13 +151,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const audio = audioRef.current && audioRef.current.dataset.primed === "1"
-        ? audioRef.current
-        : new Audio();
+      const audio = audioRef.current ?? new Audio();
+      audio.pause();
+      audio.setAttribute("playsinline", "true");
       audio.src = url;
+      audio.load();
       audioRef.current = audio;
       audio.onended = () => URL.revokeObjectURL(url);
       try {
@@ -168,7 +197,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!audioRef.current) audioRef.current = new Audio();
+      await primeAudioElement(audioRef.current);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       const mime = pickAudioMime();
       const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunksRef.current = [];
@@ -177,7 +210,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blobType = mr.mimeType || mime || "audio/webm";
+        const blobType = mr.mimeType || chunksRef.current[0]?.type || mime || "audio/mp4";
         const blob = new Blob(chunksRef.current, { type: blobType });
         if (blob.size < 500) return;
         setTranscribing(true);
@@ -212,7 +245,9 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   // ---- Call mode: continuous VAD-driven loop ----
   const [callActive, setCallActive] = useState(false);
-  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const [callState, setCallState] = useState<"idle" | "listening" | "thinking" | "speaking">(
+    "idle",
+  );
   const callRefs = useRef<{
     stream?: MediaStream;
     ctx?: AudioContext;
@@ -254,13 +289,19 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     r.stopped = true;
     if (r.raf) cancelAnimationFrame(r.raf);
     try {
-      r.recorder?.state !== "inactive" && r.recorder?.stop();
+      if (r.recorder?.state !== "inactive") r.recorder?.stop();
     } catch {
       /* noop */
     }
     r.stream?.getTracks().forEach((t) => t.stop());
     void r.ctx?.close();
-    callRefs.current = { chunks: [], speaking: false, silenceStart: 0, speechStart: 0, stopped: false };
+    callRefs.current = {
+      chunks: [],
+      speaking: false,
+      silenceStart: 0,
+      speechStart: 0,
+      stopped: false,
+    };
     audioRef.current?.pause();
     setCallActive(false);
     setCallState("idle");
@@ -268,22 +309,14 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
 
   const startCall = async () => {
     try {
-      // Prime audio element so iOS PWA allows later programmatic playback.
-      try {
-        const primer = audioRef.current ?? new Audio();
-        primer.muted = true;
-        primer.dataset.primed = "1";
-        await primer.play().catch(() => undefined);
-        primer.pause();
-        primer.muted = false;
-        audioRef.current = primer;
-      } catch {
-        /* ignore */
-      }
+      if (!audioRef.current) audioRef.current = new Audio();
+      await primeAudioElement(audioRef.current);
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AC =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AC();
       if (ctx.state === "suspended") await ctx.resume().catch(() => undefined);
       const src = ctx.createMediaStreamSource(stream);
@@ -299,7 +332,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
       setCallActive(true);
       setCallState("listening");
 
-      const SPEAK_THRESHOLD = 0.025; // RMS
+      const SPEAK_THRESHOLD = 0.018; // RMS
       const SILENCE_MS = 900;
       const MIN_SPEECH_MS = 250;
 
@@ -327,18 +360,20 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
             // start a fresh recorder per utterance
             try {
               const mime = pickAudioMime();
-              const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+              const mr = mime
+                ? new MediaRecorder(stream, { mimeType: mime })
+                : new MediaRecorder(stream);
               r.chunks = [];
               mr.ondataavailable = (e) => {
                 if (e.data.size > 0) r.chunks.push(e.data);
               };
               mr.onstop = () => {
-                const blobType = mr.mimeType || mime || "audio/webm";
+                const blobType = mr.mimeType || r.chunks[0]?.type || mime || "audio/mp4";
                 const blob = new Blob(r.chunks, { type: blobType });
                 r.chunks = [];
                 void transcribeAndSend(blob);
               };
-              mr.start();
+              mr.start(250);
               r.recorder = mr;
               setCallState("listening");
             } catch {
@@ -352,7 +387,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
             r.speaking = false;
             r.silenceStart = 0;
             try {
-              r.recorder?.state !== "inactive" && r.recorder?.stop();
+              if (r.recorder?.state !== "inactive") r.recorder?.stop();
             } catch {
               /* ignore */
             }
@@ -389,11 +424,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
     return () => {
       if (callRefs.current.stream) stopCall();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
+      <audio ref={audioRef} preload="auto" className="h-0 w-0 opacity-0" tabIndex={-1} />
       <Conversation className="flex-1">
         <ConversationContent>
           {messages.length === 0 ? (
@@ -417,7 +452,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
                     if (typeof part.type === "string" && part.type.startsWith("tool-")) {
                       const tp = part as {
                         type: `tool-${string}`;
-                        state?: "input-streaming" | "input-available" | "output-available" | "output-error";
+                        state?:
+                          | "input-streaming"
+                          | "input-available"
+                          | "output-available"
+                          | "output-error";
                         input?: unknown;
                         output?: unknown;
                         errorText?: string;
@@ -511,7 +550,11 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
               </Button>
               {callActive && (
                 <span className="text-xs text-muted-foreground">
-                  {callState === "speaking" ? "Alice is speaking…" : callState === "thinking" ? "Thinking…" : "Listening…"}
+                  {callState === "speaking"
+                    ? "Alice is speaking…"
+                    : callState === "thinking"
+                      ? "Thinking…"
+                      : "Listening…"}
                 </span>
               )}
             </div>
