@@ -101,6 +101,10 @@ function LandingPage() {
             <img src={coachLogo} alt="Coach Logo" className="h-6 w-6 grayscale opacity-50" />
             <span className="font-semibold">Coach</span>
           </div>
+          <div className="flex items-center gap-6">
+            <Link to="/privacy-policy" className="text-sm hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link to="/terms-of-service" className="text-sm hover:text-foreground transition-colors">Terms of Service</Link>
+          </div>
           <p className="text-sm">© {new Date().getFullYear()} Okikes Enterprises. All rights reserved.</p>
         </div>
       </footer>
