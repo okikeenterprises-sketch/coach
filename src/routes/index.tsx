@@ -12,13 +12,22 @@ export const Route = createFileRoute("/")({
 function LandingPage() {
   const navigate = useNavigate();
 
-  // Redirect to dashboard if already logged in
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
         navigate({ to: "/dashboard", replace: true });
       }
     });
+
+    // Listen for auth state changes (catches OAuth redirect)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate({ to: "/dashboard", replace: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   return (
