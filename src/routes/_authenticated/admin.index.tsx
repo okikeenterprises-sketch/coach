@@ -58,7 +58,7 @@ function AdminDashboard() {
               <p className="text-sm text-muted-foreground">No recent registrations.</p>
             ) : (
               <div className="space-y-4">
-                {data.recent_users.map(u => (
+                {data.recent_users.map((u: any) => (
                   <div key={u.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
                     <div>
                       <p className="font-medium text-sm">{u.display_name || "Unknown User"}</p>

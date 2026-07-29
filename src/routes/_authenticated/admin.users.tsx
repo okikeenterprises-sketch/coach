@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/components/app-sidebar"; // Wait, I can just use auth from supabase or get it from context. Let's just use supabase client
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   component: AdminUsersPage,
