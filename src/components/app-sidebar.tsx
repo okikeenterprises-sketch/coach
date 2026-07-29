@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Home, ListChecks, MessageCircle, Settings, LogOut, Plus, Trash2 } from "lucide-react";
+import { Home, ListChecks, MessageCircle, Settings, LogOut, Plus, Trash2, ShieldCheck } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -35,6 +35,16 @@ export function AppSidebar() {
   const del = useServerFn(deleteThread);
 
   const threadsQ = useQuery({ queryKey: ["threads"], queryFn: () => list() });
+
+  const adminQ = useQuery({
+    queryKey: ["is_admin"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+      const { data } = await supabase.from("profiles").select("is_admin").eq("id", user.id).single();
+      return data?.is_admin ?? false;
+    }
+  });
 
   const createM = useMutation({
     mutationFn: async () => create({ data: {} }),
@@ -79,6 +89,17 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+              
+              {adminQ.data && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={pathname === "/admin"}>
+                    <Link to="/admin" className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Admin</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

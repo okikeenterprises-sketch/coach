@@ -79,6 +79,7 @@ export type Database = {
           display_name: string | null
           email_enabled: boolean
           id: string
+          is_admin: boolean
           push_time: string
           updated_at: string
         }
@@ -87,6 +88,7 @@ export type Database = {
           display_name?: string | null
           email_enabled?: boolean
           id: string
+          is_admin?: boolean
           push_time?: string
           updated_at?: string
         }
@@ -95,6 +97,7 @@ export type Database = {
           display_name?: string | null
           email_enabled?: boolean
           id?: string
+          is_admin?: boolean
           push_time?: string
           updated_at?: string
         }
@@ -142,12 +145,39 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_admin_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
     }
     Enums: {
       task_priority: "low" | "medium" | "high"
