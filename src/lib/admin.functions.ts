@@ -35,3 +35,55 @@ export const getAdminStats = createServerFn({ method: "GET" })
       }>;
     };
   });
+
+export const listUsers = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    // Check if user is admin
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", context.userId)
+      .single();
+
+    if (!profile || !profile.is_admin) {
+      throw new Error("Forbidden: Admin access required");
+    }
+
+    const { data, error } = await context.supabase.rpc("get_all_profiles");
+    if (error) {
+      throw new Error("Failed to load users: " + error.message);
+    }
+    
+    return data;
+  });
+
+export const toggleUserAdmin = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) => {
+    if (typeof d !== "object" || d === null || !("userId" in d) || typeof (d as any).userId !== "string") {
+      throw new Error("Invalid input");
+    }
+    return { userId: (d as { userId: string }).userId };
+  })
+  .handler(async ({ context, data }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", context.userId)
+      .single();
+
+    if (!profile || !profile.is_admin) {
+      throw new Error("Forbidden: Admin access required");
+    }
+
+    const { data: newStatus, error } = await context.supabase.rpc("toggle_admin_status", {
+      target_user_id: data.userId
+    });
+
+    if (error) {
+      throw new Error("Failed to toggle admin status: " + error.message);
+    }
+
+    return { success: true, newStatus };
+  });

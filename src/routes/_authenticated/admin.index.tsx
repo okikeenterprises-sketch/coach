@@ -7,22 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Users, Activity, CheckCircle, MessageSquare, ShieldAlert } from "lucide-react";
 import { format } from "date-fns";
 
-export const Route = createFileRoute("/_authenticated/admin")({
-  beforeLoad: async () => {
-    // Client-side quick check (optional but good for UX)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw redirect({ to: "/auth" });
-    
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.is_admin) {
-      throw redirect({ to: "/" });
-    }
-  },
+export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
 });
 

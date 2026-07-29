@@ -21,7 +21,7 @@ import coachLogo from "@/assets/coach-logo.png";
 import { toast } from "sonner";
 
 const mainItems = [
-  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Tasks", url: "/tasks", icon: ListChecks },
   { title: "Settings", url: "/settings", icon: Settings },
 ] as const;
@@ -68,7 +68,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <Link to="/" className="flex items-center gap-2 px-2 py-1">
+        <Link to="/dashboard" className="flex items-center gap-2 px-2 py-1">
           <img src={coachLogo} alt="Coach" width={28} height={28} className="h-7 w-7" />
           <span className="font-semibold text-base group-data-[collapsible=icon]:hidden">Coach</span>
         </Link>
@@ -110,10 +110,15 @@ export function AppSidebar() {
             <button
               type="button"
               onClick={() => createM.mutate()}
-              className="p-1 rounded hover:bg-sidebar-accent"
+              disabled={createM.isPending}
+              className="p-1 rounded hover:bg-sidebar-accent disabled:opacity-50"
               aria-label="New chat"
             >
-              <Plus className="h-3.5 w-3.5" />
+              {createM.isPending ? (
+                <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-r-transparent" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
             </button>
           </SidebarGroupLabel>
           <SidebarGroupContent>

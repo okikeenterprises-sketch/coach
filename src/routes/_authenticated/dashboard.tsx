@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, CalendarClock, Sparkles, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 
-export const Route = createFileRoute("/_authenticated/")({
+export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
@@ -71,8 +71,9 @@ function Dashboard() {
                   : "Here's what today looks like."}
           </p>
         </div>
-        <Button onClick={() => newChat.mutate()} className="gap-2">
-          <MessageCircle className="h-4 w-4" /> Chat with Coach
+        <Button onClick={() => newChat.mutate()} className="gap-2" disabled={newChat.isPending}>
+          <MessageCircle className="h-4 w-4" /> 
+          {newChat.isPending ? "Creating..." : "Chat with Coach"}
         </Button>
       </div>
 

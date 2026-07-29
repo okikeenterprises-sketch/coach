@@ -178,6 +178,22 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      get_all_profiles: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          display_name: string | null
+          email_enabled: boolean | null
+          id: string
+          is_admin: boolean | null
+        }[]
+      }
+      toggle_admin_status: {
+        Args: {
+          target_user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       task_priority: "low" | "medium" | "high"
