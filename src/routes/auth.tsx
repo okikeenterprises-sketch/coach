@@ -29,6 +29,20 @@ function AuthPage() {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) navigate({ to: "/dashboard" });
     });
+
+    // Listen for OAuth sign-in to capture the provider_refresh_token
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.provider_refresh_token) {
+        // Save the refresh token for this user
+        await supabase.rpc('set_google_refresh_token', { 
+          token: session.provider_refresh_token 
+        });
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, [navigate]);
 
   async function submit(e: React.FormEvent) {
@@ -60,6 +74,11 @@ function AuthPage() {
       provider: "google",
       options: {
         redirectTo: window.location.origin,
+        scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.modify',
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
       }
     });
     if (error) {

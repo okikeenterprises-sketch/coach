@@ -169,6 +169,32 @@ export type Database = {
         }
         Relationships: []
       }
+      user_integrations: {
+        Row: {
+          user_id: string
+          google_refresh_token: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          user_id: string
+          google_refresh_token?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          user_id?: string
+          google_refresh_token?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_integrations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -187,6 +213,12 @@ export type Database = {
           id: string
           is_admin: boolean | null
         }[]
+      }
+      set_google_refresh_token: {
+        Args: {
+          token: string
+        }
+        Returns: undefined
       }
       toggle_admin_status: {
         Args: {

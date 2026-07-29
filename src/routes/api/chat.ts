@@ -10,6 +10,44 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { google } from "@ai-sdk/google";
 import type { Database } from "@/integrations/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+async function getGoogleAccessToken(supabase: SupabaseClient<Database>, userId: string) {
+  const { data } = await supabase
+    .from("user_integrations")
+    .select("google_refresh_token")
+    .eq("user_id", userId)
+    .single();
+
+  if (!data?.google_refresh_token) {
+    throw new Error("Google account not connected. Please sign in with Google to enable this feature.");
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error("Server missing Google OAuth credentials.");
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: data.google_refresh_token,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to refresh Google Access Token. Please sign in with Google again.");
+  }
+
+  const tokenData = await response.json();
+  return tokenData.access_token as string;
+}
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -235,24 +273,27 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 maxResults: z.number().int().min(1).max(20).default(10),
               }),
               execute: async ({ hoursAhead, maxResults }) => {
-                const token = process.env.GOOGLE_ACCESS_TOKEN;
-                if (!token) return { error: "Calendar not configured: Missing Google Access Token" };
-                const timeMin = new Date().toISOString();
-                const timeMax = new Date(Date.now() + hoursAhead * 3600 * 1000).toISOString();
-                const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=${maxResults}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
-                const res = await fetch(url, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                if (!res.ok) return { error: `Calendar error ${res.status}` };
-                const data = await res.json();
-                return {
-                  events: (data.items ?? []).map((e: { summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; location?: string }) => ({
-                    summary: e.summary,
-                    start: e.start?.dateTime ?? e.start?.date,
-                    end: e.end?.dateTime ?? e.end?.date,
-                    location: e.location,
-                  })),
-                };
+                try {
+                  const token = await getGoogleAccessToken(supabase, userId);
+                  const timeMin = new Date().toISOString();
+                  const timeMax = new Date(Date.now() + hoursAhead * 3600 * 1000).toISOString();
+                  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=${maxResults}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
+                  const res = await fetch(url, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  if (!res.ok) return { error: `Calendar error ${res.status}` };
+                  const data = await res.json();
+                  return {
+                    events: (data.items ?? []).map((e: { summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; location?: string }) => ({
+                      summary: e.summary,
+                      start: e.start?.dateTime ?? e.start?.date,
+                      end: e.end?.dateTime ?? e.end?.date,
+                      location: e.location,
+                    })),
+                  };
+                } catch (e) {
+                  return { error: e instanceof Error ? e.message : "Calendar access failed" };
+                }
               },
             }),
             create_calendar_event: tool({
@@ -265,28 +306,31 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 location: z.string().max(300).optional(),
               }),
               execute: async ({ summary, description, startISO, endISO, location }) => {
-                const token = process.env.GOOGLE_ACCESS_TOKEN;
-                if (!token) return { error: "Calendar not configured: Missing Google Access Token" };
-                const res = await fetch(
-                  "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${token}`,
+                try {
+                  const token = await getGoogleAccessToken(supabase, userId);
+                  const res = await fetch(
+                    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        summary,
+                        description,
+                        location,
+                        start: { dateTime: startISO },
+                        end: { dateTime: endISO },
+                      }),
                     },
-                    body: JSON.stringify({
-                      summary,
-                      description,
-                      location,
-                      start: { dateTime: startISO },
-                      end: { dateTime: endISO },
-                    }),
-                  },
-                );
-                if (!res.ok) return { error: `Calendar error ${res.status}: ${await res.text()}` };
-                const data = await res.json();
-                return { ok: true, eventId: data.id, htmlLink: data.htmlLink };
+                  );
+                  if (!res.ok) return { error: `Calendar error ${res.status}: ${await res.text()}` };
+                  const data = await res.json();
+                  return { ok: true, eventId: data.id, htmlLink: data.htmlLink };
+                } catch (e) {
+                  return { error: e instanceof Error ? e.message : "Calendar access failed" };
+                }
               },
             }),
             search_emails: tool({
@@ -296,24 +340,27 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 maxResults: z.number().int().min(1).max(15).default(5),
               }),
               execute: async ({ query, maxResults }) => {
-                const token = process.env.GOOGLE_ACCESS_TOKEN;
-                if (!token) return { error: "Gmail not configured: Missing Google Access Token" };
-                const base = "https://gmail.googleapis.com/gmail/v1/users/me";
-                const headers = { Authorization: `Bearer ${token}` };
-                const list = await fetch(`${base}/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`, { headers });
-                if (!list.ok) return { error: `Gmail error ${list.status}` };
-                const { messages = [] } = await list.json();
-                const details = await Promise.all(
-                  (messages as { id: string }[]).slice(0, maxResults).map(async (m) => {
-                    const r = await fetch(`${base}/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, { headers });
-                    if (!r.ok) return null;
-                    const d = await r.json();
-                    const h = (d.payload?.headers ?? []) as { name: string; value: string }[];
-                    const get = (n: string) => h.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value;
-                    return { from: get("From"), subject: get("Subject"), date: get("Date"), snippet: d.snippet };
-                  }),
-                );
-                return { emails: details.filter(Boolean) };
+                try {
+                  const token = await getGoogleAccessToken(supabase, userId);
+                  const base = "https://gmail.googleapis.com/gmail/v1/users/me";
+                  const headers = { Authorization: `Bearer ${token}` };
+                  const list = await fetch(`${base}/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`, { headers });
+                  if (!list.ok) return { error: `Gmail error ${list.status}` };
+                  const { messages = [] } = await list.json();
+                  const details = await Promise.all(
+                    (messages as { id: string }[]).slice(0, maxResults).map(async (m) => {
+                      const r = await fetch(`${base}/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, { headers });
+                      if (!r.ok) return null;
+                      const d = await r.json();
+                      const h = (d.payload?.headers ?? []) as { name: string; value: string }[];
+                      const get = (n: string) => h.find((x) => x.name.toLowerCase() === n.toLowerCase())?.value;
+                      return { from: get("From"), subject: get("Subject"), date: get("Date"), snippet: d.snippet };
+                    }),
+                  );
+                  return { emails: details.filter(Boolean) };
+                } catch (e) {
+                  return { error: e instanceof Error ? e.message : "Gmail access failed" };
+                }
               },
             }),
             send_email: tool({
@@ -324,23 +371,26 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 body: z.string().min(1).max(10000),
               }),
               execute: async ({ to, subject, body: emailBody }) => {
-                const token = process.env.GOOGLE_ACCESS_TOKEN;
-                if (!token) return { error: "Gmail not configured: Missing Google Access Token" };
-                const rfc = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', "", emailBody].join("\r\n");
-                const raw = Buffer.from(rfc).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-                const res = await fetch(
-                  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${token}`,
+                try {
+                  const token = await getGoogleAccessToken(supabase, userId);
+                  const rfc = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', "", emailBody].join("\r\n");
+                  const raw = Buffer.from(rfc).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+                  const res = await fetch(
+                    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                    {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({ raw }),
                     },
-                    body: JSON.stringify({ raw }),
-                  },
-                );
-                if (!res.ok) return { error: `Gmail send error ${res.status}: ${await res.text()}` };
-                return { ok: true };
+                  );
+                  if (!res.ok) return { error: `Gmail send error ${res.status}: ${await res.text()}` };
+                  return { ok: true };
+                } catch (e) {
+                  return { error: e instanceof Error ? e.message : "Gmail access failed" };
+                }
               },
             }),
           },
