@@ -21,8 +21,13 @@ function LandingPage() {
     });
 
     // Listen for auth state changes (catches OAuth redirect)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
+        if (session.provider_refresh_token) {
+          await supabase.rpc('set_google_refresh_token', { 
+            token: session.provider_refresh_token 
+          });
+        }
         navigate({ to: "/dashboard", replace: true });
       }
     });
