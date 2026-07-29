@@ -15,7 +15,7 @@ export const listThreads = createServerFn({ method: "GET" })
 
 export const createThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z.object({ title: z.string().max(200).optional() }).parse(d ?? {}),
   )
   .handler(async ({ context, data }) => {
@@ -30,7 +30,7 @@ export const createThread = createServerFn({ method: "POST" })
 
 export const deleteThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase.from("chat_threads").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
@@ -39,7 +39,7 @@ export const deleteThread = createServerFn({ method: "POST" })
 
 export const renameThread = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z.object({ id: z.string().uuid(), title: z.string().min(1).max(200) }).parse(d),
   )
   .handler(async ({ context, data }) => {
@@ -53,7 +53,7 @@ export const renameThread = createServerFn({ method: "POST" })
 
 export const getThreadMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ threadId: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ threadId: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
     const { data: rows, error } = await context.supabase
       .from("chat_messages")

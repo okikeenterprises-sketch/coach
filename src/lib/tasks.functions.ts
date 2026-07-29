@@ -25,7 +25,7 @@ export const listTasks = createServerFn({ method: "GET" })
 
 export const createTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => TaskInput.parse(d))
+  .validator((d: unknown) => TaskInput.parse(d))
   .handler(async ({ context, data }) => {
     const { data: row, error } = await context.supabase
       .from("tasks")
@@ -38,7 +38,7 @@ export const createTask = createServerFn({ method: "POST" })
 
 export const updateTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z.object({
       id: z.string().uuid(),
       patch: TaskInput.partial().extend({
@@ -70,7 +70,7 @@ export const updateTask = createServerFn({ method: "POST" })
 
 export const deleteTask = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ context, data }) => {
     const { error } = await context.supabase.from("tasks").delete().eq("id", data.id);
     if (error) throw new Error(error.message);

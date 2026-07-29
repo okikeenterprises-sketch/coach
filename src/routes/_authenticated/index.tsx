@@ -41,6 +41,10 @@ function Dashboard() {
       qc.invalidateQueries({ queryKey: ["threads"] });
       navigate({ to: "/chat/$threadId", params: { threadId: t.id } });
     },
+    onError: (e) => {
+      console.error("Failed to create chat:", e);
+      alert("Failed to create chat: " + String(e));
+    }
   });
 
   const greeting = (() => {

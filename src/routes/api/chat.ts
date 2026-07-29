@@ -8,7 +8,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { google } from "@ai-sdk/google";
 import type { Database } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/api/chat")({
@@ -22,9 +22,10 @@ export const Route = createFileRoute("/api/chat")({
         const token = auth.slice("Bearer ".length);
         const SUPABASE_URL = process.env.SUPABASE_URL!;
         const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY!;
-        const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
-        if (!LOVABLE_API_KEY) {
-          return new Response("Missing LOVABLE_API_KEY", { status: 500 });
+        const GOOGLE_GENERATIVE_AI_API_KEY = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        
+        if (!GOOGLE_GENERATIVE_AI_API_KEY) {
+          return new Response("Missing GOOGLE_GENERATIVE_AI_API_KEY", { status: 500 });
         }
 
         const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -102,10 +103,8 @@ Open tasks: ${openTasks?.length ?? 0} total. Overdue: ${overdue.length}. Due tod
 
 You have tools for tasks, web search, calendar, and email. Use them whenever the user asks. Always confirm actions briefly after doing them. When reading aloud, spell out times naturally (e.g. "three thirty PM"). Never paste raw URLs or JSON.`;
 
-        const provider = createLovableAiGatewayProvider(LOVABLE_API_KEY);
-
         const result = streamText({
-          model: provider("google/gemini-3-flash-preview"),
+          model: google("gemini-3-flash-preview"),
           system,
           messages: await convertToModelMessages(body.messages),
           stopWhen: stepCountIs(50),
@@ -236,14 +235,13 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 maxResults: z.number().int().min(1).max(20).default(10),
               }),
               execute: async ({ hoursAhead, maxResults }) => {
-                const lk = process.env.LOVABLE_API_KEY;
-                const ck = process.env.GOOGLE_CALENDAR_API_KEY;
-                if (!lk || !ck) return { error: "Calendar not configured" };
+                const token = process.env.GOOGLE_ACCESS_TOKEN;
+                if (!token) return { error: "Calendar not configured: Missing Google Access Token" };
                 const timeMin = new Date().toISOString();
                 const timeMax = new Date(Date.now() + hoursAhead * 3600 * 1000).toISOString();
-                const url = `https://connector-gateway.lovable.dev/google_calendar/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=${maxResults}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
+                const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=${maxResults}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
                 const res = await fetch(url, {
-                  headers: { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": ck },
+                  headers: { Authorization: `Bearer ${token}` },
                 });
                 if (!res.ok) return { error: `Calendar error ${res.status}` };
                 const data = await res.json();
@@ -267,17 +265,15 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 location: z.string().max(300).optional(),
               }),
               execute: async ({ summary, description, startISO, endISO, location }) => {
-                const lk = process.env.LOVABLE_API_KEY;
-                const ck = process.env.GOOGLE_CALENDAR_API_KEY;
-                if (!lk || !ck) return { error: "Calendar not configured" };
+                const token = process.env.GOOGLE_ACCESS_TOKEN;
+                if (!token) return { error: "Calendar not configured: Missing Google Access Token" };
                 const res = await fetch(
-                  "https://connector-gateway.lovable.dev/google_calendar/calendar/v3/calendars/primary/events",
+                  "https://www.googleapis.com/calendar/v3/calendars/primary/events",
                   {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      Authorization: `Bearer ${lk}`,
-                      "X-Connection-Api-Key": ck,
+                      Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
                       summary,
@@ -300,11 +296,10 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 maxResults: z.number().int().min(1).max(15).default(5),
               }),
               execute: async ({ query, maxResults }) => {
-                const lk = process.env.LOVABLE_API_KEY;
-                const gk = process.env.GOOGLE_MAIL_API_KEY;
-                if (!lk || !gk) return { error: "Gmail not configured" };
-                const base = "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me";
-                const headers = { Authorization: `Bearer ${lk}`, "X-Connection-Api-Key": gk };
+                const token = process.env.GOOGLE_ACCESS_TOKEN;
+                if (!token) return { error: "Gmail not configured: Missing Google Access Token" };
+                const base = "https://gmail.googleapis.com/gmail/v1/users/me";
+                const headers = { Authorization: `Bearer ${token}` };
                 const list = await fetch(`${base}/messages?maxResults=${maxResults}&q=${encodeURIComponent(query)}`, { headers });
                 if (!list.ok) return { error: `Gmail error ${list.status}` };
                 const { messages = [] } = await list.json();
@@ -329,19 +324,17 @@ You have tools for tasks, web search, calendar, and email. Use them whenever the
                 body: z.string().min(1).max(10000),
               }),
               execute: async ({ to, subject, body: emailBody }) => {
-                const lk = process.env.LOVABLE_API_KEY;
-                const gk = process.env.GOOGLE_MAIL_API_KEY;
-                if (!lk || !gk) return { error: "Gmail not configured" };
+                const token = process.env.GOOGLE_ACCESS_TOKEN;
+                if (!token) return { error: "Gmail not configured: Missing Google Access Token" };
                 const rfc = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset="UTF-8"', "", emailBody].join("\r\n");
                 const raw = Buffer.from(rfc).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
                 const res = await fetch(
-                  "https://connector-gateway.lovable.dev/google_mail/gmail/v1/users/me/messages/send",
+                  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
                   {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      Authorization: `Bearer ${lk}`,
-                      "X-Connection-Api-Key": gk,
+                      Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({ raw }),
                   },
