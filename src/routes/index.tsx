@@ -256,11 +256,10 @@ function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-black/10 py-12 px-6 lg:px-12 bg-slate-50 relative z-10">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-slate-500">Powered by</span>
-            <div className="flex items-center gap-1.5 opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
-              <img src={coachLogo} alt="Coach Logo" className="h-5 w-5" />
-              <span className="font-bold text-md tracking-tight text-slate-900">Coach</span>
+            <div className="flex items-center opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
+              <img src="/sponsor/Asset 41.png" alt="Sponsor Logo" className="h-8 w-auto object-contain" />
             </div>
           </div>
           
