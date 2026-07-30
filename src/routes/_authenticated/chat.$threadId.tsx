@@ -27,7 +27,6 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import coachLogo from "@/assets/coach-logo.png";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Volume2, VolumeX, Phone, PhoneOff } from "lucide-react";
@@ -433,7 +432,7 @@ function Chat({ threadId, initial }: { threadId: string; initial: UIMessage[] })
         <ConversationContent>
           {messages.length === 0 ? (
             <ConversationEmptyState
-              icon={<img src={coachLogo} alt="" width={64} height={64} className="h-16 w-16" />}
+              icon={<img src="/logo.png" alt="Alice Logo" width={64} height={64} className="h-16 w-16" />}
               title="Hi, I'm Alice"
               description="Talk or type. I can manage tasks, search the web, check your calendar, and send emails."
             />
