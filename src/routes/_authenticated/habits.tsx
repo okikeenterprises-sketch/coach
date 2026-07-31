@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Flame, CalendarCheck2 } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 import { toast } from "sonner";
 
@@ -131,16 +131,49 @@ function HabitsPage() {
             </p>
           </div>
         ) : (
-          habits.map((habit) => (
-            <Card key={habit.id} className="flex flex-col">
-              <CardContent className="p-5 flex-1 flex flex-col gap-4">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-lg truncate" title={habit.title}>{habit.title}</h3>
-                    {habit.notes && (
-                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1" title={habit.notes}>{habit.notes}</p>
-                    )}
-                  </div>
+          habits.map((habit) => {
+            const logs = habit.habit_logs || [];
+            const totalDays = logs.length;
+            const completedDates = new Set(logs.map((l: any) => l.completed_date));
+            
+            let currentStreak = 0;
+            let checkDate = startOfDay(new Date());
+            const todayStr = format(checkDate, "yyyy-MM-dd");
+            
+            if (!completedDates.has(todayStr)) {
+              checkDate = subDays(checkDate, 1);
+            }
+            
+            while (true) {
+              const dateStr = format(checkDate, "yyyy-MM-dd");
+              if (completedDates.has(dateStr)) {
+                currentStreak++;
+                checkDate = subDays(checkDate, 1);
+              } else {
+                break;
+              }
+            }
+
+            return (
+              <Card key={habit.id} className="flex flex-col">
+                <CardContent className="p-5 flex-1 flex flex-col gap-4">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg truncate" title={habit.title}>{habit.title}</h3>
+                      {habit.notes && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1" title={habit.notes}>{habit.notes}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-3">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-orange-500 bg-orange-500/10 px-2 py-1 rounded-full">
+                          <Flame className="w-3.5 h-3.5" />
+                          {currentStreak} {currentStreak === 1 ? 'day streak' : 'day streak'}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full">
+                          <CalendarCheck2 className="w-3.5 h-3.5" />
+                          {totalDays} {totalDays === 1 ? 'total day' : 'total days'}
+                        </div>
+                      </div>
+                    </div>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -204,8 +237,8 @@ function HabitsPage() {
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
+          );
+        })}
       </div>
     </div>
   );
