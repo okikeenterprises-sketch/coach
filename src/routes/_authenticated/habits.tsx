@@ -238,7 +238,8 @@ function HabitsPage() {
               </CardContent>
             </Card>
           );
-        })}
+        })
+      )}
       </div>
     </div>
   );
