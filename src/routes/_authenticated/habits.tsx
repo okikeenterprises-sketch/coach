@@ -9,8 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, CheckCircle2, Circle } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { Plus, Trash2 } from "lucide-react";
+import { format, subDays, startOfDay } from "date-fns";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/habits")({
@@ -58,15 +58,16 @@ function HabitsPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Generate last 7 days
-  const today = new Date();
-  const last7Days = Array.from({ length: 7 }).map((_, i) => {
-    const d = subDays(today, 6 - i);
+  // Generate last 30 days
+  const today = startOfDay(new Date());
+  const last30Days = Array.from({ length: 30 }).map((_, i) => {
+    const d = subDays(today, 29 - i);
     return {
       dateObj: d,
       dateStr: format(d, "yyyy-MM-dd"),
-      label: format(d, "EEE"),
+      label: format(d, "MMM d"),
       day: format(d, "d"),
+      isPast: d < today,
     };
   });
 
@@ -76,7 +77,7 @@ function HabitsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Habits</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Track your daily habits and build consistency.
+            Track your daily habits over the last 30 days.
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -121,95 +122,89 @@ function HabitsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {habits.length === 0 ? (
-          <div className="text-center py-12 border rounded-lg bg-card">
+          <div className="text-center py-12 border rounded-lg bg-card col-span-full">
             <h3 className="text-lg font-medium text-foreground">No habits yet</h3>
             <p className="text-muted-foreground text-sm mt-1">
               Create your first habit to start tracking your daily progress.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto pb-4">
-            <div className="min-w-[600px]">
-              {/* Header row for days */}
-              <div className="flex items-center gap-4 mb-4 px-4">
-                <div className="flex-1 font-medium text-sm text-muted-foreground uppercase tracking-wider">
-                  Habit
+          habits.map((habit) => (
+            <Card key={habit.id} className="flex flex-col">
+              <CardContent className="p-5 flex-1 flex flex-col gap-4">
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-lg truncate" title={habit.title}>{habit.title}</h3>
+                    {habit.notes && (
+                      <p className="text-sm text-muted-foreground line-clamp-2 mt-1" title={habit.notes}>{habit.notes}</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:text-destructive shrink-0 -mt-1 -mr-2"
+                    disabled={delM.isPending}
+                    onClick={() => {
+                      if (confirm("Delete this habit forever?")) delM.mutate(habit.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Delete habit</span>
+                  </Button>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  {last7Days.map((d) => (
-                    <div key={d.dateStr} className="flex flex-col items-center justify-center w-10">
-                      <span className="text-[10px] text-muted-foreground font-medium uppercase">{d.label}</span>
-                      <span className="text-sm font-semibold">{d.day}</span>
-                    </div>
-                  ))}
-                  <div className="w-8"></div> {/* Spacer for delete button */}
-                </div>
-              </div>
-
-              {/* Habit rows */}
-              <div className="space-y-3">
-                {habits.map((habit) => (
-                  <Card key={habit.id}>
-                    <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-base truncate">{habit.title}</h3>
-                        {habit.notes && (
-                          <p className="text-xs text-muted-foreground truncate">{habit.notes}</p>
-                        )}
-                      </div>
+                
+                <div className="mt-auto pt-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {last30Days.map((d) => {
+                      const isCompleted = habit.habit_logs?.some(
+                        (log: any) => log.completed_date === d.dateStr
+                      );
                       
-                      <div className="flex gap-2 shrink-0 items-center mt-2 sm:mt-0">
-                        {last7Days.map((d) => {
-                          const isCompleted = habit.habit_logs?.some(
-                            (log: any) => log.completed_date === d.dateStr
-                          );
-                          
-                          return (
-                            <button
-                              key={d.dateStr}
-                              disabled={toggleM.isPending}
-                              onClick={() => toggleM.mutate({ 
-                                habitId: habit.id, 
-                                date: d.dateStr, 
-                                completed: !isCompleted 
-                              })}
-                              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 ${
-                                isCompleted 
-                                  ? 'bg-primary text-primary-foreground shadow-sm' 
-                                  : 'bg-muted/50 hover:bg-muted text-muted-foreground border border-border/50'
-                              }`}
-                              aria-label={`Mark ${habit.title} as ${isCompleted ? 'incomplete' : 'complete'} for ${d.dateStr}`}
-                            >
-                              {isCompleted ? (
-                                <CheckCircle2 className="h-5 w-5" />
-                              ) : (
-                                <Circle className="h-5 w-5 opacity-40" />
-                              )}
-                            </button>
-                          );
-                        })}
-                        
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="ml-2 text-muted-foreground hover:text-destructive shrink-0"
-                          disabled={delM.isPending}
-                          onClick={() => {
-                            if (confirm("Delete this habit forever?")) delM.mutate(habit.id);
-                          }}
+                      let bgColor = "bg-secondary hover:bg-secondary/80 text-secondary-foreground";
+                      if (isCompleted) {
+                        bgColor = "bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm";
+                      } else if (d.isPast) {
+                        bgColor = "bg-rose-500 hover:bg-rose-600 text-white shadow-sm";
+                      }
+                      
+                      return (
+                        <button
+                          key={d.dateStr}
+                          title={`${d.label}: ${isCompleted ? 'Completed' : d.isPast ? 'Missed' : 'Pending'}`}
+                          disabled={toggleM.isPending}
+                          onClick={() => toggleM.mutate({ 
+                            habitId: habit.id, 
+                            date: d.dateStr, 
+                            completed: !isCompleted 
+                          })}
+                          className={`w-[26px] h-[26px] sm:w-7 sm:h-7 rounded text-[10px] font-medium flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 ${bgColor}`}
+                          aria-label={`Mark ${habit.title} as ${isCompleted ? 'incomplete' : 'complete'} for ${d.dateStr}`}
                         >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Delete habit</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </div>
+                          {d.day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-4 mt-3 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-emerald-500"></div>
+                      Done
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-rose-500"></div>
+                      Missed
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded bg-secondary"></div>
+                      Today
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
         )}
       </div>
     </div>
