@@ -4,15 +4,23 @@ import { LayoutDashboard, Users, ShieldAlert } from "lucide-react";
 import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
-  beforeLoad: async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+  beforeLoad: async ({ context }) => {
+    const { data } = await supabase.auth.getSession();
+    const user = data.session?.user;
     if (!user) throw redirect({ to: "/auth" });
     
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
+    const profile = await context.queryClient.ensureQueryData({
+      queryKey: ["admin-profile", user.id],
+      queryFn: async () => {
+        const { data } = await supabase
+          .from("profiles")
+          .select("is_admin")
+          .eq("id", user.id)
+          .single();
+        return data;
+      },
+      staleTime: 1000 * 60 * 5,
+    });
 
     if (!profile?.is_admin) {
       throw redirect({ to: "/dashboard" });

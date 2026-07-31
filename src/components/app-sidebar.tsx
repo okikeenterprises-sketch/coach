@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { Home, ListChecks, MessageCircle, Settings, LogOut, Plus, Trash2, ShieldCheck } from "lucide-react";
+import { Home, ListChecks, MessageCircle, Settings, LogOut, Plus, Trash2, ShieldCheck, Activity } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -23,6 +23,7 @@ import { toast } from "sonner";
 const mainItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Tasks", url: "/tasks", icon: ListChecks },
+  { title: "Habits", url: "/habits", icon: Activity },
   { title: "Settings", url: "/settings", icon: Settings },
 ] as const;
 
