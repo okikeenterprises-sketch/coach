@@ -1,26 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+/**
+ * STT is now handled entirely client-side via the browser's built-in
+ * Web Speech API (SpeechRecognition) — no server round-trip needed.
+ * This endpoint is kept as a stub in case a server-side fallback is added later.
+ */
 export const Route = createFileRoute("/api/public/stt")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
-        const key = process.env.ELEVENLABS_API_KEY;
-        if (!key) return new Response("STT not configured", { status: 500 });
-        const form = await request.formData();
-        const file = form.get("audio");
-        if (!(file instanceof Blob)) return new Response("Missing audio", { status: 400 });
-        const filename = "name" in file && typeof file.name === "string" ? file.name : "audio.m4a";
-        const out = new FormData();
-        out.append("file", file, filename);
-        out.append("model_id", "scribe_v2");
-        const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
-          method: "POST",
-          headers: { "xi-api-key": key },
-          body: out,
-        });
-        if (!r.ok) return new Response(await r.text(), { status: r.status });
-        const data = await r.json();
-        return Response.json({ text: data.text ?? "" });
+      POST: async () => {
+        return Response.json(
+          { error: "STT is handled client-side via Web Speech API" },
+          { status: 501 },
+        );
       },
     },
   },
