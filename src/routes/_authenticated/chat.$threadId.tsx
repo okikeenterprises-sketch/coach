@@ -102,6 +102,169 @@ function getSR(): SpeechRecognitionCtor | null {
   return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as SpeechRecognitionCtor | null;
 }
 
+// ─── Real-time Mic Volume Analyzer Hook ─────────────────────────────────────
+
+function useMicVolume(enabled: boolean) {
+  const [volume, setVolume] = useState(0); // 0 to 1
+
+  useEffect(() => {
+    if (!enabled) {
+      setVolume(0);
+      return;
+    }
+    let stream: MediaStream | null = null;
+    let audioCtx: AudioContext | null = null;
+    let animId: number;
+
+    async function setup() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        const AC =
+          window.AudioContext ||
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).webkitAudioContext;
+        audioCtx = new AC();
+        if (audioCtx.state === "suspended") {
+          await audioCtx.resume();
+        }
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const tick = () => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          // Scale avg (0..255) to 0..1 with sensitivity curve
+          const norm = Math.min(1, avg / 60);
+          setVolume(norm);
+          animId = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        setVolume(0);
+      }
+    }
+
+    void setup();
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      if (audioCtx && audioCtx.state !== "closed") void audioCtx.close();
+      setVolume(0);
+    };
+  }, [enabled]);
+
+  return volume;
+}
+
+// ─── Voice Equalizer / Waveform Visualizer Component ────────────────────────
+
+function VoiceVisualizer({
+  active,
+  recording,
+  callActive,
+  callState,
+  micVolume,
+}: {
+  active: boolean;
+  recording: boolean;
+  callActive: boolean;
+  callState: "idle" | "listening" | "thinking" | "speaking";
+  micVolume: number;
+}) {
+  const [ticker, setTicker] = useState(0);
+
+  // Force tick animation for AI speaking/thinking modes
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setTicker((t) => (t + 1) % 100), 80);
+    return () => clearInterval(timer);
+  }, [active]);
+
+  if (!active) return null;
+
+  let statusText = "Listening…";
+  let statusBadge = "Quiet";
+  let badgeColor = "bg-muted text-muted-foreground border-border";
+
+  if (recording || (callActive && callState === "listening")) {
+    if (micVolume > 0.25) {
+      statusBadge = "Audible ✓";
+      badgeColor = "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+    } else if (micVolume > 0.05) {
+      statusBadge = "Low Sound";
+      badgeColor = "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30";
+    } else {
+      statusBadge = "Silent";
+      badgeColor = "bg-zinc-500/20 text-zinc-500 border-zinc-500/30";
+    }
+  } else if (callState === "thinking") {
+    statusText = "Thinking…";
+    statusBadge = "Processing";
+    badgeColor = "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30";
+  } else if (callState === "speaking") {
+    statusText = "Alice speaking";
+    statusBadge = "Audio Output";
+    badgeColor = "bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30";
+  }
+
+  const bars = [0.5, 0.95, 1.0, 0.8, 0.6];
+
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-background/95 border shadow-sm text-xs font-medium animate-in fade-in slide-in-from-bottom-2">
+      {/* Equalizer bars */}
+      <div className="flex items-center gap-1 h-4 w-7 justify-center">
+        {bars.map((factor, i) => {
+          let heightPercent = 20;
+          if (callState === "speaking") {
+            heightPercent = 25 + Math.abs(Math.sin((ticker / 2) + i)) * 75;
+          } else if (callState === "thinking") {
+            heightPercent = 30 + Math.abs(Math.cos((ticker / 3) + i)) * 40;
+          } else {
+            heightPercent = Math.max(15, Math.min(100, micVolume * 100 * factor * 1.6));
+          }
+
+          return (
+            <span
+              key={i}
+              className={`w-1 rounded-full transition-all duration-75 ${
+                callState === "speaking"
+                  ? "bg-purple-500"
+                  : callState === "thinking"
+                    ? "bg-blue-500 animate-pulse"
+                    : micVolume > 0.2
+                      ? "bg-emerald-500"
+                      : micVolume > 0.05
+                        ? "bg-amber-500"
+                        : "bg-muted-foreground/30"
+              }`}
+              style={{ height: `${heightPercent}%` }}
+            />
+          );
+        })}
+      </div>
+
+      <span className="truncate max-w-[110px] text-xs font-medium">{statusText}</span>
+
+      <span
+        className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold tracking-wide transition-colors ${badgeColor}`}
+      >
+        {statusBadge}
+      </span>
+    </div>
+  );
+}
+
 // ─── Route ──────────────────────────────────────────────────────────────────
 
 export const Route = createFileRoute("/_authenticated/chat/$threadId")({
@@ -232,6 +395,10 @@ function Chat({
   const [recording, setRecording] = useState(false);
   const micRef = useRef<ISpeechRecognition | null>(null);
 
+  // Minimum confidence to accept a result (0 = no filter, 1 = perfect only).
+  // 0.45 rejects most background noise while still catching natural speech.
+  const CONFIDENCE_THRESHOLD = 0.45;
+
   const startRecording = useCallback(() => {
     const SR = getSR();
     if (!SR) {
@@ -252,7 +419,10 @@ function Chat({
       }
     };
     r.onresult = async (e: SpeechRecognitionEvent) => {
-      const text = e.results[0][0].transcript.trim();
+      const result = e.results[0][0];
+      // Reject low-confidence results (background noise misrecognized as speech)
+      if (result.confidence > 0 && result.confidence < CONFIDENCE_THRESHOLD) return;
+      const text = result.transcript.trim();
       if (text) await sendMessage({ text });
     };
 
@@ -263,7 +433,7 @@ function Chat({
       toast.error("Could not start microphone");
       setRecording(false);
     }
-  }, [sendMessage]);
+  }, [sendMessage, CONFIDENCE_THRESHOLD]);
 
   const stopRecording = useCallback(() => {
     micRef.current?.stop();
@@ -281,6 +451,8 @@ function Chat({
   const callActiveRef = useRef(false);
   const callStateRef = useRef<"idle" | "listening" | "thinking" | "speaking">("idle");
   const callRecRef = useRef<ISpeechRecognition | null>(null);
+  // Watchdog: detects when recognition silently dies and restarts it
+  const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const setCallStateSynced = useCallback(
     (s: "idle" | "listening" | "thinking" | "speaking") => {
@@ -298,63 +470,79 @@ function Chat({
     const SR = getSR();
     if (!SR) return;
 
+    // Abort any previous instance before creating a new one
+    try { callRecRef.current?.abort(); } catch { /* ignore */ }
+
     const r = new SR();
     r.continuous = false;       // one utterance → natural pauses trigger onend
-    r.interimResults = true;    // interim results allow barge-in detection
+    r.interimResults = true;    // enables barge-in detection on interim results
     r.lang = "en-US";
     callRecRef.current = r;
 
     r.onresult = async (e: SpeechRecognitionEvent) => {
-      // Barge-in: pause TTS the moment speech is detected
+      // Barge-in: stop TTS the moment we detect speech
       if (audioRef.current && !audioRef.current.paused) {
         audioRef.current.pause();
       }
 
       const last = e.results[e.results.length - 1];
-      if (!last.isFinal) return; // still speaking — keep waiting
+      if (!last.isFinal) return; // interim result — keep waiting
+
+      // Noise filter: discard low-confidence results (mumble / background noise)
+      const confidence = last[0].confidence;
+      if (confidence > 0 && confidence < CONFIDENCE_THRESHOLD) return;
 
       const text = last[0].transcript.trim();
       if (!text) return;
 
       setCallStateSynced("thinking");
-      r.abort(); // stop listening while AI processes
+      r.abort();
 
       try {
         await sendMessage({ text });
-        // Listening will resume automatically when TTS playback ends
+        // Recognition restarts automatically when TTS ends (see audio effect below)
       } catch {
         setCallStateSynced("listening");
-        setTimeout(() => startListening(), 400);
+        setTimeout(() => startListening(), 500);
       }
     };
 
     r.onend = () => {
+      callRecRef.current = null; // mark as dead so watchdog can detect it
       if (!callActiveRef.current) return;
-      // Only re-arm on silence timeout — not when we aborted for thinking/speaking
-      if (callStateRef.current === "listening") {
-        setTimeout(() => startListening(), 200);
-      }
+      const state = callStateRef.current;
+      if (state === "thinking" || state === "speaking") return;
+      // no-speech timeout or silence — restart quickly
+      setTimeout(() => startListening(), 300);
     };
 
     r.onerror = (e: SpeechRecognitionErrorEvent) => {
       if (!callActiveRef.current || e.error === "aborted") return;
-      // "no-speech" is normal — onend will re-arm
-      if (e.error !== "no-speech") {
-        toast.error(`Call mic error: ${e.error}`);
+      if (e.error === "no-speech") return; // onend will handle restart
+      if (e.error === "network") {
+        // Network hiccup — retry after a beat
+        setTimeout(() => startListening(), 1000);
+        return;
       }
+      toast.error(`Mic error: ${e.error}`);
     };
 
     try {
       r.start();
       setCallStateSynced("listening");
     } catch {
-      /* recognition might already be starting — ignore */
+      // Failed to start — schedule a retry
+      setTimeout(() => startListening(), 500);
     }
   }, [sendMessage, setCallStateSynced]);
 
   const stopCall = useCallback(() => {
     callActiveRef.current = false;
-    callRecRef.current?.abort();
+    if (watchdogRef.current) {
+      clearInterval(watchdogRef.current);
+      watchdogRef.current = null;
+    }
+    try { callRecRef.current?.abort(); } catch { /* ignore */ }
     callRecRef.current = null;
     audioRef.current?.pause();
     setCallActive(false);
@@ -371,6 +559,18 @@ function Chat({
     callActiveRef.current = true;
     setCallActive(true);
     startListening();
+
+    // Watchdog: every 3 s, revive recognition if it silently died
+    // (Chrome sometimes fires neither onend nor onerror — this catches that)
+    watchdogRef.current = setInterval(() => {
+      if (
+        callActiveRef.current &&
+        callStateRef.current === "listening" &&
+        callRecRef.current === null
+      ) {
+        startListening();
+      }
+    }, 3_000);
   }, [startListening]);
 
   // Restart listening after TTS finishes speaking during a call
@@ -400,6 +600,10 @@ function Chat({
   useEffect(() => () => stopCall(), [stopCall]);
 
   // ─── UI ───────────────────────────────────────────────────────────────────
+
+  // Live microphone volume metering (active during mic recording or call listening)
+  const isMicMeteringActive = recording || (callActive && callState === "listening");
+  const micVolume = useMicVolume(isMicMeteringActive);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)]">
@@ -521,7 +725,7 @@ function Chat({
             }
           />
           <PromptInputFooter className="justify-between">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Mic button (single utterance) */}
               <Button
                 type="button"
@@ -575,16 +779,14 @@ function Chat({
                 )}
               </Button>
 
-              {/* Call state indicator */}
-              {callActive && (
-                <span className="text-xs text-muted-foreground animate-pulse">
-                  {callState === "speaking"
-                    ? "🔊 Alice is speaking…"
-                    : callState === "thinking"
-                      ? "💭 Thinking…"
-                      : "🎙 Listening…"}
-                </span>
-              )}
+              {/* Real-time Voice Equalizer & Sound Level Visualizer */}
+              <VoiceVisualizer
+                active={recording || callActive}
+                recording={recording}
+                callActive={callActive}
+                callState={callState}
+                micVolume={micVolume}
+              />
             </div>
 
             <PromptInputSubmit status={status} disabled={isLoading} />
