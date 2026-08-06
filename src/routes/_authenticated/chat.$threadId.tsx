@@ -344,6 +344,98 @@ function Chat({
 
   const isLoading = status === "submitted" || status === "streaming";
 
+  // ── Call mode refs & helpers ───────────────────────────────────────────────
+  const [callActive, setCallActive] = useState(false);
+  const [callState, setCallState] = useState<
+    "idle" | "listening" | "thinking" | "speaking"
+  >("idle");
+
+  const callActiveRef = useRef(false);
+  const callStateRef = useRef<"idle" | "listening" | "thinking" | "speaking">("idle");
+  const callRecRef = useRef<ISpeechRecognition | null>(null);
+  const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const setCallStateSynced = useCallback(
+    (s: "idle" | "listening" | "thinking" | "speaking") => {
+      callStateRef.current = s;
+      setCallState(s);
+    },
+    [],
+  );
+
+  // Minimum confidence to accept a result (0 = no filter, 1 = perfect only).
+  const CONFIDENCE_THRESHOLD = 0.45;
+
+  /** Starts one SpeechRecognition session. On end, re-arms itself unless stopped. */
+  const startListening = useCallback(() => {
+    if (!callActiveRef.current) return;
+    if (callStateRef.current === "speaking" || callStateRef.current === "thinking") return;
+
+    const SR = getSR();
+    if (!SR) return;
+
+    // Abort any previous instance before creating a new one
+    try { callRecRef.current?.abort(); } catch { /* ignore */ }
+
+    const r = new SR();
+    r.continuous = false;       // one utterance → natural pauses trigger onend
+    r.interimResults = true;    // enables barge-in detection on interim results
+    r.lang = "en-US";
+    callRecRef.current = r;
+
+    r.onresult = async (e: SpeechRecognitionEvent) => {
+      // Barge-in: stop TTS the moment we detect speech
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+      }
+
+      const last = e.results[e.results.length - 1];
+      if (!last.isFinal) return; // interim result — keep waiting
+
+      // Noise filter: discard low-confidence results (mumble / background noise)
+      const confidence = last[0].confidence;
+      if (confidence > 0 && confidence < CONFIDENCE_THRESHOLD) return;
+
+      const text = last[0].transcript.trim();
+      if (!text) return;
+
+      setCallStateSynced("thinking");
+      r.abort();
+
+      try {
+        await sendMessage({ text });
+      } catch {
+        setCallStateSynced("listening");
+        setTimeout(() => startListening(), 500);
+      }
+    };
+
+    r.onend = () => {
+      callRecRef.current = null; // mark as dead so watchdog can detect it
+      if (!callActiveRef.current) return;
+      const state = callStateRef.current;
+      if (state === "thinking" || state === "speaking") return;
+      // no-speech timeout or silence — restart quickly
+      setTimeout(() => startListening(), 300);
+    };
+
+    r.onerror = (e: SpeechRecognitionErrorEvent) => {
+      if (!callActiveRef.current || e.error === "aborted") return;
+      if (e.error === "no-speech") return;
+      if (e.error !== "no-speech") {
+        toast.error(`Mic error: ${e.error}`);
+      }
+    };
+
+    try {
+      r.start();
+      setCallStateSynced("listening");
+    } catch {
+      // Failed to start — schedule a retry
+      setTimeout(() => startListening(), 500);
+    }
+  }, [sendMessage, setCallStateSynced, CONFIDENCE_THRESHOLD]);
+
   // ── TTS: Gemini voice playback ─────────────────────────────────────────────
   const [voiceOn, setVoiceOn] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -419,10 +511,6 @@ function Chat({
   const [recording, setRecording] = useState(false);
   const micRef = useRef<ISpeechRecognition | null>(null);
 
-  // Minimum confidence to accept a result (0 = no filter, 1 = perfect only).
-  // 0.45 rejects most background noise while still catching natural speech.
-  const CONFIDENCE_THRESHOLD = 0.45;
-
   const startRecording = useCallback(() => {
     const SR = getSR();
     if (!SR) {
@@ -465,83 +553,6 @@ function Chat({
     setRecording(false);
   }, []);
 
-  // ── Call mode: continuous hands-free conversation ─────────────────────────
-  const [callActive, setCallActive] = useState(false);
-  const [callState, setCallState] = useState<
-    "idle" | "listening" | "thinking" | "speaking"
-  >("idle");
-
-  // Use refs so closures inside recognition handlers always see latest values
-  const callActiveRef = useRef(false);
-  const callStateRef = useRef<"idle" | "listening" | "thinking" | "speaking">("idle");
-  const callRecRef = useRef<ISpeechRecognition | null>(null);
-  // Watchdog: detects when recognition silently dies and restarts it
-  const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const setCallStateSynced = useCallback(
-    (s: "idle" | "listening" | "thinking" | "speaking") => {
-      callStateRef.current = s;
-      setCallState(s);
-    },
-    [],
-  );
-
-  /** Starts one SpeechRecognition session. On end, re-arms itself unless stopped. */
-  const startListening = useCallback(() => {
-    if (!callActiveRef.current) return;
-    if (callStateRef.current === "speaking" || callStateRef.current === "thinking") return;
-
-    const SR = getSR();
-    if (!SR) return;
-
-    // Abort any previous instance before creating a new one
-    try { callRecRef.current?.abort(); } catch { /* ignore */ }
-
-    const r = new SR();
-    r.continuous = false;       // one utterance → natural pauses trigger onend
-    r.interimResults = true;    // enables barge-in detection on interim results
-    r.lang = "en-US";
-    callRecRef.current = r;
-
-    r.onresult = async (e: SpeechRecognitionEvent) => {
-      // Barge-in: stop TTS the moment we detect speech
-      if (audioRef.current && !audioRef.current.paused) {
-        audioRef.current.pause();
-      }
-
-      const last = e.results[e.results.length - 1];
-      if (!last.isFinal) return; // interim result — keep waiting
-
-      // Noise filter: discard low-confidence results (mumble / background noise)
-      const confidence = last[0].confidence;
-      if (confidence > 0 && confidence < CONFIDENCE_THRESHOLD) return;
-
-      const text = last[0].transcript.trim();
-      if (!text) return;
-
-      setCallStateSynced("thinking");
-      r.abort();
-
-      try {
-        await sendMessage({ text });
-        // Recognition restarts automatically when TTS ends (see audio effect below)
-      } catch {
-        setCallStateSynced("listening");
-        setTimeout(() => startListening(), 500);
-      }
-    };
-
-    r.onend = () => {
-      callRecRef.current = null; // mark as dead so watchdog can detect it
-      if (!callActiveRef.current) return;
-      const state = callStateRef.current;
-      if (state === "thinking" || state === "speaking") return;
-      // no-speech timeout or silence — restart quickly
-      setTimeout(() => startListening(), 300);
-    };
-
-    r.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (!callActiveRef.current || e.error === "aborted") return;
       if (e.error === "no-speech") return; // onend will handle restart
       if (e.error === "network") {
         // Network hiccup — retry after a beat
