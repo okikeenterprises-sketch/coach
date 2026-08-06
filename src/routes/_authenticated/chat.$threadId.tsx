@@ -356,38 +356,62 @@ function Chat({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // If TTS fails during call mode, resume listening after brief delay
+        if (callActiveRef.current) {
+          setCallStateSynced("listening");
+          setTimeout(() => startListening(), 400);
+        }
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const audio = audioRef.current ?? new Audio();
-      audio.pause();
-      audio.setAttribute("playsinline", "true");
+      const audio = audioRef.current;
+      if (!audio) return;
+
       audio.src = url;
       audio.load();
-      audioRef.current = audio;
       audio.onended = () => URL.revokeObjectURL(url);
+
+      // Abort mic before playing TTS so speaker audio isn't recorded as user input
+      try { callRecRef.current?.abort(); } catch { /* ignore */ }
+      callRecRef.current = null;
+
       await audio.play().catch(() => {
-        /* autoplay blocked — user will see speaker button */
+        if (callActiveRef.current) {
+          setCallStateSynced("listening");
+          setTimeout(() => startListening(), 400);
+        }
       });
     } catch {
-      /* network/API error — silent fail */
+      if (callActiveRef.current) {
+        setCallStateSynced("listening");
+        setTimeout(() => startListening(), 400);
+      }
     }
-  }, []);
+  }, [setCallStateSynced, startListening]);
 
   // Auto-speak new assistant messages when voice is on
   useEffect(() => {
-    if (!voiceOn || status !== "ready") return;
+    if (status !== "ready") return;
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant") return;
     if (spokenRef.current.has(last.id)) return;
+    spokenRef.current.add(last.id);
+
     const text = last.parts
       .map((p) => (p.type === "text" ? p.text : ""))
       .join(" ")
       .trim();
-    if (!text) return;
-    spokenRef.current.add(last.id);
-    void speak(text);
-  }, [messages, status, voiceOn, speak]);
+
+    if (voiceOn && text) {
+      void speak(text);
+    } else if (callActiveRef.current) {
+      // Voice off or no text: resume listening in call mode
+      setCallStateSynced("listening");
+      setTimeout(() => startListening(), 400);
+    }
+  }, [messages, status, voiceOn, speak, setCallStateSynced, startListening]);
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
@@ -534,7 +558,7 @@ function Chat({
       // Failed to start — schedule a retry
       setTimeout(() => startListening(), 500);
     }
-  }, [sendMessage, setCallStateSynced]);
+  }, [sendMessage, setCallStateSynced, CONFIDENCE_THRESHOLD]);
 
   const stopCall = useCallback(() => {
     callActiveRef.current = false;
@@ -560,8 +584,7 @@ function Chat({
     setCallActive(true);
     startListening();
 
-    // Watchdog: every 3 s, revive recognition if it silently died
-    // (Chrome sometimes fires neither onend nor onerror — this catches that)
+    // Watchdog: every 2.5 s, revive recognition if it silently died
     watchdogRef.current = setInterval(() => {
       if (
         callActiveRef.current &&
@@ -570,7 +593,7 @@ function Chat({
       ) {
         startListening();
       }
-    }, 3_000);
+    }, 2_500);
   }, [startListening]);
 
   // Restart listening after TTS finishes speaking during a call
@@ -580,19 +603,19 @@ function Chat({
     if (!a) return;
 
     const onPlay = () => setCallStateSynced("speaking");
-    const onEnd = () => {
-      setCallStateSynced("listening");
-      // Give browser a short breath before re-arming recognition
-      setTimeout(() => startListening(), 350);
+    const onEnded = () => {
+      if (callActiveRef.current) {
+        setCallStateSynced("listening");
+        // Give browser a short breath before re-arming recognition
+        setTimeout(() => startListening(), 400);
+      }
     };
 
     a.addEventListener("play", onPlay);
-    a.addEventListener("pause", onEnd);
-    a.addEventListener("ended", onEnd);
+    a.addEventListener("ended", onEnded);
     return () => {
       a.removeEventListener("play", onPlay);
-      a.removeEventListener("pause", onEnd);
-      a.removeEventListener("ended", onEnd);
+      a.removeEventListener("ended", onEnded);
     };
   }, [callActive, startListening, setCallStateSynced]);
 
