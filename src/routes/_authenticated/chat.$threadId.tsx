@@ -553,24 +553,6 @@ function Chat({
     setRecording(false);
   }, []);
 
-      if (e.error === "no-speech") return; // onend will handle restart
-      if (e.error === "network") {
-        // Network hiccup — retry after a beat
-        setTimeout(() => startListening(), 1000);
-        return;
-      }
-      toast.error(`Mic error: ${e.error}`);
-    };
-
-    try {
-      r.start();
-      setCallStateSynced("listening");
-    } catch {
-      // Failed to start — schedule a retry
-      setTimeout(() => startListening(), 500);
-    }
-  }, [sendMessage, setCallStateSynced, CONFIDENCE_THRESHOLD]);
-
   const stopCall = useCallback(() => {
     callActiveRef.current = false;
     if (watchdogRef.current) {
